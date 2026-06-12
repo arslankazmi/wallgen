@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from fluxwall import config as cfg
-from fluxwall import loras
+from wallgen import config as cfg
+from wallgen import loras
 
 
 def test_parse_cli_loras():

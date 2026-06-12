@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .config import Config, LoraSpec
 
-log = logging.getLogger("fluxwall.loras")
+log = logging.getLogger("wallgen.loras")
 
 
 def parse_cli_loras(items: list[str] | None) -> list[LoraSpec]:

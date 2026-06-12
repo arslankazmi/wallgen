@@ -1,4 +1,4 @@
-"""``fluxwall`` command-line interface (Typer).
+"""``wallgen`` command-line interface (Typer).
 
 Commands: generate · batch · daily · list-models · loras · train · ui
 """
@@ -14,7 +14,7 @@ from . import config as cfg
 from . import loras as lora_mod
 from . import prompts as prompt_mod
 
-app = typer.Typer(add_completion=False, help="Self-hosted FLUX wallpaper generator.")
+app = typer.Typer(add_completion=False, help="Self-hosted FLUX/Z-Image wallpaper generator.")
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -25,58 +25,55 @@ def _setup_logging(verbose: bool) -> None:
     )
 
 
+def _run(conf, prompts, single, profile, loras, lora, seed):
+    """Apply lock/compose then generate."""
+    from . import pipeline
+
+    composed, overridden = prompt_mod.build_prompts(conf, prompts, single=single)
+    if overridden:
+        typer.secho(
+            f"Prompt lock is '{conf.lock_mode}': ad-hoc prompt ignored; using locked prompts.",
+            fg=typer.colors.YELLOW,
+        )
+    extra = lora_mod.parse_cli_loras(lora)
+    records = pipeline.generate(composed, profile, loras, extra, seed, config=conf)
+    for r in records:
+        typer.echo(r.image_path)
+    return records
+
+
 @app.command()
 def generate(
     prompt: str = typer.Argument(..., help="Text prompt for the wallpaper."),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile (dev/prod)."),
-    resolution: str = typer.Option("hd", "--resolution", "-r", help="Resolution preset."),
-    seed: Optional[int] = typer.Option(None, "--seed", help="Random seed for reproducibility."),
+    seed: Optional[int] = typer.Option(None, "--seed", help="Seed for reproducibility."),
     loras: Optional[str] = typer.Option(None, "--loras", help="Named LoRA stack from config."),
     lora: list[str] = typer.Option(None, "--lora", help="Ad-hoc LoRA as source:scale (repeatable)."),
-    no_upscale: bool = typer.Option(False, "--no-upscale", help="Skip upscaling to target size."),
     config_path: Optional[str] = typer.Option(None, "--config", help="Path to config.yaml."),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ):
-    """Generate a single wallpaper from PROMPT."""
+    """Generate a single wallpaper from PROMPT (size + stretch come from config)."""
     _setup_logging(verbose)
-    from . import pipeline  # lazy: avoids importing torch for --help
-
     conf = cfg.load_config(config_path)
-    extra = lora_mod.parse_cli_loras(lora)
-    records = pipeline.generate(
-        [prompt], profile, resolution, loras, extra, seed,
-        do_upscale=not no_upscale, config=conf,
-    )
-    for r in records:
-        typer.echo(r.image_path)
+    _run(conf, [prompt], True, profile, loras, lora, seed)
 
 
 @app.command()
 def batch(
     prompt_file: str = typer.Argument(..., help="File with one prompt per line."),
     profile: str = typer.Option(None, "--profile", "-p"),
-    resolution: str = typer.Option("hd", "--resolution", "-r"),
     seed: Optional[int] = typer.Option(None, "--seed"),
     loras: Optional[str] = typer.Option(None, "--loras"),
     lora: list[str] = typer.Option(None, "--lora"),
-    no_upscale: bool = typer.Option(False, "--no-upscale"),
     config_path: Optional[str] = typer.Option(None, "--config"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ):
     """Generate a wallpaper for every prompt in PROMPT_FILE."""
     _setup_logging(verbose)
-    from . import pipeline
-
     conf = cfg.load_config(config_path)
     prompts = prompt_mod.read_prompt_file(prompt_file)
-    extra = lora_mod.parse_cli_loras(lora)
-    records = pipeline.generate(
-        prompts, profile, resolution, loras, extra, seed,
-        do_upscale=not no_upscale, config=conf,
-    )
+    records = _run(conf, prompts, False, profile, loras, lora, seed)
     typer.echo(f"Generated {len(records)} wallpaper(s).")
-    for r in records:
-        typer.echo(r.image_path)
 
 
 @app.command()
@@ -89,8 +86,7 @@ def daily(
     _setup_logging(verbose)
     from .scheduler import daily_wallpaper
 
-    path = daily_wallpaper.run(config_path=config_path, set_desktop=set_desktop)
-    typer.echo(path)
+    typer.echo(daily_wallpaper.run(config_path=config_path, set_desktop=set_desktop))
 
 
 @app.command("list-models")
@@ -100,11 +96,18 @@ def list_models(config_path: Optional[str] = typer.Option(None, "--config")):
     typer.echo("Profiles:")
     for name, p in conf.profiles.items():
         marker = "*" if name == conf.default_profile else " "
-        typer.echo(f"  {marker} {name}: model={p.model} steps={p.steps} guidance={p.guidance}")
-    typer.echo("Models:")
-    for name, m in conf.models.items():
-        gguf = f" gguf={m.gguf}" if m.gguf else ""
-        typer.echo(f"    {name}: kind={m.kind} base={m.base}{gguf}")
+        typer.echo(f"  {marker} {name}: model={p.model}")
+    typer.echo("Models (priority order):")
+    for m in sorted(conf.models.values(), key=lambda m: -m.priority):
+        backends = []
+        if m.mlx:
+            backends.append("mlx")
+        if m.base:
+            backends.append("diffusers")
+        typer.echo(
+            f"    {m.name}: kind={m.kind} prio={m.priority} min_ram={m.min_memory_gb}GB "
+            f"min_vram={m.min_vram_gb}GB steps={m.default_steps} [{'/'.join(backends)}]"
+        )
 
 
 @app.command("loras")
@@ -113,10 +116,9 @@ def loras_cmd(config_path: Optional[str] = typer.Option(None, "--config")):
     conf = cfg.load_config(config_path)
     typer.echo("Configured stacks:")
     for name, specs in conf.lora_stacks.items():
-        typer.echo(f"  {name}: {[ (s.source, s.scale) for s in specs ]}")
-    local = lora_mod.list_local_loras()
+        typer.echo(f"  {name}: {[(s.source, s.scale) for s in specs]}")
     typer.echo("Local loras/ files:")
-    for f in local or ["(none)"]:
+    for f in lora_mod.list_local_loras() or ["(none)"]:
         typer.echo(f"  {f}")
 
 

@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>flux-wallpaper — self-hosted FLUX wallpaper pipeline</title>
-  <meta name="description" content="Self-hosted FLUX text-to-image pipeline for high-res desktop wallpapers. Two-tier FLUX.2-klein / FLUX.1-schnell, GGUF quant auto-select, MPS+CUDA, LoRA, daily scheduler." />
-  <meta property="og:title" content="flux-wallpaper — self-hosted FLUX wallpaper pipeline" />
-  <meta property="og:description" content="FLUX.2-klein (dev) + FLUX.1-schnell (prod), GGUF quant auto-select by memory, MPS/CUDA auto, Real-ESRGAN upscaling, LoRA, daily off-hours scheduler." />
-  <meta property="og:url" content="https://arslankazmi.github.io/flux-wallpaper/" />
+  <title>WallGen — multi-model wallpaper generator</title>
+  <meta name="description" content="Self-hosted text-to-image wallpaper generator. Picks the best model + backend per host: Z-Image-Turbo / FLUX.2-klein / sd-turbo, MLX on Apple Silicon, Diffusers+GGUF on CUDA/CPU. Quantized under 8GB, stretch output, LoRA, daily scheduler." />
+  <meta property="og:title" content="WallGen — multi-model wallpaper generator" />
+  <meta property="og:description" content="Hardware-aware: Z-Image-Turbo default, MLX on Apple Silicon + Diffusers/GGUF on CUDA/CPU, quantized under 8GB, stretch-to-screen, LoRA, daily off-hours scheduler." />
+  <meta property="og:url" content="https://arslankazmi.github.io/wallgen/" />
   <!-- Shared design tokens from the ak-design catalog theme. -->
   <link rel="stylesheet" href="https://arslankazmi.github.io/ak-design/dist/catalog.css?v=1" />
   <script src="https://cdn.tailwindcss.com"></script>
@@ -47,23 +47,23 @@
     <!-- Hero -->
     <header class="mb-12">
       <a href="https://arslankazmi.github.io/portfolio/" class="text-sm text-gray-400 hover:text-violet-400">↩ Catalog</a>
-      <h1 class="text-4xl md:text-5xl font-bold text-gray-200 mt-4">🖼️ Flux Wallpaper Generation Pipeline</h1>
+      <h1 class="text-4xl md:text-5xl font-bold text-gray-200 mt-4">🖼️ WallGen — Multi-Model Wallpaper Generator</h1>
       <p class="text-lg text-gray-400 mt-4 max-w-3xl">
-        A self-hosted text-to-image pipeline that wraps HuggingFace Diffusers around Black Forest Labs'
-        <strong class="text-violet-400">FLUX</strong> models to generate high-resolution desktop wallpapers —
-        running on Apple Silicon (MPS) and auto-upgrading to CUDA, with memory-aware GGUF quantization,
-        LoRA support, and a daily off-hours scheduler.
+        A lean, self-hosted text-to-image pipeline that picks the
+        <strong class="text-violet-400">most optimized model + backend for your hardware</strong> —
+        MLX on Apple Silicon, Diffusers + GGUF on CUDA/CPU — quantizes transformer and text encoder
+        for a tiny footprint, and stretches the result to your screen.
       </p>
       <div class="flex flex-wrap gap-2 mt-6 text-sm">
-        <span class="card px-3 py-1">FLUX.2-klein · FLUX.1-schnell</span>
-        <span class="card px-3 py-1">Diffusers + GGUF</span>
-        <span class="card px-3 py-1">MPS / CUDA / CPU auto</span>
-        <span class="card px-3 py-1">Real-ESRGAN upscale</span>
+        <span class="card px-3 py-1">Z-Image-Turbo · FLUX.2-klein · sd-turbo</span>
+        <span class="card px-3 py-1">MLX + Diffusers backends</span>
+        <span class="card px-3 py-1">Apple Silicon / CUDA / CPU auto</span>
+        <span class="card px-3 py-1">&lt;8GB quantized</span>
         <span class="card px-3 py-1">LoRA-ready</span>
         <span class="card px-3 py-1">No telemetry</span>
       </div>
       <div class="mt-6">
-        <a href="https://github.com/arslankazmi/flux-wallpaper" class="inline-block bg-violet-600 text-white px-5 py-2 rounded-lg font-medium hover:opacity-90">View on GitHub →</a>
+        <a href="https://github.com/arslankazmi/wallgen" class="inline-block bg-violet-600 text-white px-5 py-2 rounded-lg font-medium hover:opacity-90">View on GitHub →</a>
       </div>
     </header>
 
@@ -71,10 +71,10 @@
     <section class="mb-12">
       <h2 class="text-2xl font-bold text-gray-200 mb-5">What it does</h2>
       <div class="grid md:grid-cols-2 gap-4">
-        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Two model tiers</h3><p>Fast <strong>dev</strong> tier (FLUX.2-klein-4B, Q4 GGUF) for iteration; quality <strong>prod</strong> tier (FLUX.1-schnell) for the daily wallpaper — one Diffusers code path, swap via config.</p></div>
-        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Runs anywhere</h3><p>Auto-detects cuda → mps → cpu, picks bf16/fp32, and selects the GGUF quant (Q8/Q6/Q5/Q4) that fits your memory. CPU-offloads heavy tiers when RAM is tight.</p></div>
-        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Wallpaper-shaped</h3><p>Generates at a FLUX-native size then upscales (Real-ESRGAN → Lanczos fallback) to 1080p / 1440p / 4K. Every image gets a reproducible JSON sidecar.</p></div>
-        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">LoRA + scheduler</h3><p>Stack third-party / local LoRAs or train your own. A launchd/cron job makes one wallpaper a day in off-hours and sets your desktop.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Best model per host</h3><p>A priority registry + memory probe pick the best model that fits: <strong>Z-Image-Turbo</strong> → FLUX.2-klein → sd-turbo. VRAM and system RAM are weighed separately on CUDA.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Optimal backend per OS</h3><p>Apple Silicon runs <strong>MLX (mflux)</strong> for zero-copy unified-memory speed; CUDA/CPU run Diffusers + GGUF with the right dtype (bf16/fp16/fp32) and offload tier.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Tiny footprint</h3><p>Transformer <em>and</em> text encoder are quantized — Z-Image-Turbo 4-bit on Apple Silicon is a ~6GB download and runs under 8GB.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Lean output + prompt lock</h3><p>No upscaler: generate native (≤1080p) then stretch-resize. A wallpaper directive tells the model it'll be stretched; a prompt lock keeps the deployed scheduler on-rails.</p></div>
       </div>
     </section>
 
@@ -84,15 +84,20 @@
       <div class="card p-5">
         <pre class="mermaid">
 flowchart TD
-    CLI["CLI / Gradio UI / Scheduler"] --> CFG["config.yaml"]
-    CFG --> DEV["device.py — cuda&gt;mps&gt;cpu, dtype, quant auto-select"]
-    DEV --> LOAD["models.py — unified loader"]
-    LOAD -->|FLUX.2 unsupported / low mem| FB["fallback: SDXL-Turbo"]
-    LOAD --> LORA["loras.py — stack + scale"]
-    LORA --> GEN["pipeline.py — generate @ native res"]
-    GEN --> UP["upscale.py — Real-ESRGAN → target"]
-    UP --> ORG["organize.py — output/date/slug.png + .json"]
+    CLI["CLI / Gradio UI / Scheduler"] --> PR["prompts.py — directive + lock"]
+    PR --> CFG["config.fit_model — best model for host"]
+    CFG --> DEV["device.py — capabilities + placement (dtype/quant/offload)"]
+    DEV --> SEL["backends.select — MLX or Diffusers"]
+    SEL -->|Apple Silicon| MLX["MLXBackend (mflux 4-bit)"]
+    SEL -->|CUDA / CPU| DIFF["DiffusersBackend (GGUF transformer + encoder)"]
+    DIFF -->|unsupported| FB["fallback model (klein → sd-turbo)"]
+    MLX --> GEN["pipeline.py — generate @ native size"]
+    DIFF --> GEN
+    GEN --> ST["stretch-resize → target (PIL)"]
+    ST --> ORG["organize.py — output/date/slug.png + .json"]
     ORG --> WALL["wallpaper"]
+    LORA["loras.py"] --> MLX
+    LORA --> DIFF
     TRAIN["train/ → ak:ml-finetune"] -.->|.safetensors| LORA
         </pre>
       </div>
@@ -102,14 +107,13 @@ flowchart TD
     <section class="mb-12">
       <h2 class="text-2xl font-bold text-gray-200 mb-5">A run, end to end</h2>
       <div class="card p-5">
-        <pre class="trace text-sm text-gray-300">$ uv run python -m fluxwall generate "a serene misty mountain at dawn, ultrawide" -r hd
+        <pre class="trace text-sm text-gray-300">$ uv run python -m wallgen generate "a serene misty mountain at dawn, ultrawide"
 
-Profile dev | model=flux2-klein-4b | device=mps dtype=bfloat16 quant=Q4_K_M mem=16.0GB | loras=0
-Using GGUF FLUX.2-klein-4B-Q4_K_M.gguf from unsloth/FLUX.2-klein-4B-GGUF
-Generating 'a serene misty mountain at dawn, ultrawide' @ 1024x576 (flux2-klein-4b)
-Real-ESRGAN 2x → 1920x1080
+Profile dev | model=z-image-turbo backend=mlx quant=4bit device=mps | steps=9 guidance=0.0 | loras=0
+Generating '... , <wallpaper directive>' @ 1024x576 via mlx
+stretch 1024x576 → 1920x1080
 Saved output/2026-06-12/a-serene-misty-mountain-at-dawn-ultrawide.png
-       + a-serene-misty-mountain-at-dawn-ultrawide.json   (prompt · seed · quant · loras)</pre>
+       + a-serene-misty-mountain-at-dawn-ultrawide.json  (backend · model · quant · stretched · prompt)</pre>
       </div>
     </section>
 
@@ -117,10 +121,10 @@ Saved output/2026-06-12/a-serene-misty-mountain-at-dawn-ultrawide.png
     <section class="mb-12">
       <h2 class="text-2xl font-bold text-gray-200 mb-5">Design decisions</h2>
       <div class="grid md:grid-cols-2 gap-4">
-        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">GGUF, not FP8/NF4</h3><p>GGUF is the only quantization that runs on <em>both</em> MPS and CUDA. FP8 (torchao) and NF4 (bitsandbytes) are CUDA-only, so they're deliberately unused — one quant path everywhere.</p></div>
-        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">guidance_scale = 0</h3><p>FLUX schnell/klein are <em>guidance-distilled</em> — they generate in ~4 steps with no CFG. Non-zero guidance degrades them. The defaults reflect that.</p></div>
-        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">LoRA without fusing</h3><p>Fusing LoRA into GGUF-quantized weights is unreliable, so requesting any LoRA transparently loads an unquantized base and applies adapters via PEFT scaling.</p></div>
-        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">CPU torch by default</h3><p>torch lives in conflicting cpu/cuda dependency-groups — the multi-GB CUDA stack is never installed unless asked for, keeping Docker images small.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">MLX on Apple Silicon</h3><p>On unified memory, CPU offload only <em>duplicates</em> weights. MLX (mflux) is zero-copy and far faster than PyTorch-MPS — so it's the Apple-Silicon backend, loading resident.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">VRAM ≠ RAM on CUDA</h3><p>Selection weighs transformer-on-VRAM separately from total-on-RAM (encoder offloads to RAM). dtype follows the GPU: bf16 on Ampere+, fp16 on Turing.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Quantize the encoder too</h3><p>The text encoder (Qwen3-4B) is the real memory hog. Quantizing it — not just the transformer — is what gets the whole model under 8GB.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Stretch, don't upscale</h3><p>Generate at a native ≤1080p size and stretch-resize — no upscaler dependency. The prompt directive tells the model it'll be stretched so it frames accordingly.</p></div>
       </div>
     </section>
 
@@ -128,15 +132,14 @@ Saved output/2026-06-12/a-serene-misty-mountain-at-dawn-ultrawide.png
     <section class="mb-12">
       <h2 class="text-2xl font-bold text-gray-200 mb-5">Project layout</h2>
       <div class="card p-5">
-        <pre class="trace text-sm text-gray-400">fluxwall/
-  device.py     cuda&gt;mps&gt;cpu · dtype · quant auto-select
-  models.py     unified loader (FLUX.2 / FLUX.1 GGUF / SDXL) + fallback
-  loras.py      LoRA stack resolution + scaling (GGUF-aware)
-  config.py     profiles · models · resolutions · lora stacks
-  prompts.py    prompt files + deterministic daily rotation
-  pipeline.py   generate → upscale → organise
+        <pre class="trace text-sm text-gray-400">wallgen/
+  device.py     capabilities probe · placement (dtype/quant/offload) · backend select
+  backends.py   MLXBackend (mflux) + DiffusersBackend (GGUF) + fallback
+  config.py     registry · priority fit_model · output sizing · prompt/lock
+  prompts.py    directive compose · lock modes · daily rotation
+  loras.py      LoRA stack resolution + scaling
+  pipeline.py   pick model → backend → generate → stretch → organise
   organize.py   output/&lt;date&gt;/slug.png + JSON sidecar
-  upscale.py    Real-ESRGAN → Lanczos fallback
   webui.py      Gradio UI (telemetry off, localhost)
   cli.py        generate · batch · daily · loras · train · ui
   scheduler/    daily_wallpaper.py + launchd/cron templates
@@ -148,12 +151,14 @@ Saved output/2026-06-12/a-serene-misty-mountain-at-dawn-ultrawide.png
     <section class="mb-12">
       <h2 class="text-2xl font-bold text-gray-200 mb-5">Quickstart</h2>
       <div class="card p-5">
-        <pre class="trace text-sm text-gray-300">uv sync --extra ui --extra upscale --extra lora     # Mac / dev (CPU/MPS torch)
+        <pre class="trace text-sm text-gray-300">uv sync --extra mlx --extra ui --extra lora          # Apple Silicon (MLX)
+# uv sync --no-group cpu --group cuda --extra ui      # NVIDIA GPU
+# uv sync                                             # no GPU (lean CPU torch)
 
-uv run python -m fluxwall generate "northern lights over a fjord" -r uhd
-uv run python -m fluxwall batch prompts/wallpapers.txt
-uv run python -m fluxwall ui                          # localhost Gradio UI
-uv run python -m fluxwall generate "neon city" --lora some-org/neon:0.8</pre>
+uv run python -m wallgen generate "northern lights over a fjord"
+uv run python -m wallgen batch prompts/wallpapers.txt
+uv run python -m wallgen ui                          # localhost Gradio UI
+uv run python -m wallgen generate "neon city" --lora some-org/neon:0.8</pre>
       </div>
     </section>
 

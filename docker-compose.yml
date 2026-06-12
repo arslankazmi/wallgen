@@ -1,14 +1,14 @@
 # Home-server deployment for the daily wallpaper job.
-# `docker compose run --rm fluxwall generate "..."` for one-offs, or let the
+# `docker compose run --rm wallgen generate "..."` for one-offs, or let the
 # default `daily` command run on a host cron/systemd timer.
 services:
-  fluxwall:
+  wallgen:
     build:
       context: .
       args:
         # Set to "cuda" on a GPU host (and switch the base image accordingly).
         TORCH_GROUP: cpu
-    image: flux-wallpaper:latest
+    image: wallgen:latest
     volumes:
       - ./output:/app/output      # generated wallpapers
       - hf-models:/models         # cached model weights (persist across runs)

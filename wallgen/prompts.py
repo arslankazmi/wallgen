@@ -53,3 +53,27 @@ def rotate_daily(prompts: list[str], day: _dt.date | None = None) -> str:
     day = day or _dt.date.today()
     index = day.toordinal() % len(prompts)
     return prompts[index]
+
+
+def build_prompts(config, requested: list[str], single: bool = False) -> tuple[list[str], bool]:
+    """Apply the configured lock mode + wallpaper directive to produce the prompts
+    actually sent to the model.
+
+    Returns ``(prompts, overridden)`` where ``overridden`` is True when lock mode
+    ``locked`` discarded a user-supplied prompt. Modes:
+      * ``off``      — user prompts verbatim (no directive).
+      * ``template`` — each user prompt wrapped with the wallpaper directive.
+      * ``locked``   — user input ignored; only ``locked_prompts`` are used
+                       (today's rotation if ``single`` else all), each composed.
+    """
+    mode = config.lock_mode
+    overridden = False
+    if mode == "locked":
+        locked = read_prompt_file(config.locked_prompts_path)
+        prompts = [rotate_daily(locked)] if single else locked
+        overridden = bool(requested)
+    else:
+        prompts = list(requested)
+    if mode in ("template", "locked"):
+        prompts = [config.compose_prompt(p) for p in prompts]
+    return prompts, overridden

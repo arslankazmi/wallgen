@@ -2,7 +2,7 @@ import datetime as dt
 
 import pytest
 
-from fluxwall import prompts
+from wallgen import prompts
 
 
 def test_slugify():
@@ -40,3 +40,43 @@ def test_rotate_daily_is_deterministic():
     assert items.index(nxt) == (items.index(first) + 1) % len(items)
     with pytest.raises(ValueError):
         prompts.rotate_daily([])
+
+
+def _config_with_lock(tmp_path, mode):
+    from wallgen import config as cfg
+
+    locked = tmp_path / "locked.txt"
+    locked.write_text("alpha vista\nbeta vista\n")
+    p = tmp_path / "config.yaml"
+    p.write_text(
+        f"""
+prompt:
+  wallpaper_directive: "DIRECTIVE"
+  lock: {{ mode: {mode}, template: "{{prompt}} | {{wallpaper_directive}}", locked_prompts: {locked} }}
+""".strip()
+    )
+    return cfg.load_config(p)
+
+
+def test_build_prompts_off(tmp_path):
+    conf = _config_with_lock(tmp_path, "off")
+    out, overridden = prompts.build_prompts(conf, ["my subject"])
+    assert out == ["my subject"] and overridden is False
+
+
+def test_build_prompts_template(tmp_path):
+    conf = _config_with_lock(tmp_path, "template")
+    out, overridden = prompts.build_prompts(conf, ["my subject"])
+    assert out == ["my subject | DIRECTIVE"] and overridden is False
+
+
+def test_build_prompts_locked_ignores_user(tmp_path):
+    conf = _config_with_lock(tmp_path, "locked")
+    out, overridden = prompts.build_prompts(conf, ["hijack attempt"], single=True)
+    assert overridden is True
+    assert len(out) == 1
+    assert "hijack" not in out[0]
+    assert out[0].endswith("| DIRECTIVE")  # composed from a locked prompt
+    # Batch (single=False) -> all locked prompts composed.
+    out_all, _ = prompts.build_prompts(conf, [], single=False)
+    assert len(out_all) == 2

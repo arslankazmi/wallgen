@@ -4,7 +4,7 @@ This intentionally does NOT reimplement a diffusion trainer. It validates the
 dataset, resolves a training config template, and hands off to the established
 finetuning workflow (the ``ak:ml-finetune`` skill — SimpleTuner / kohya for FLUX
 LoRA). The resulting ``.safetensors`` is written into ``loras/`` where the
-inference path (``fluxwall.loras``) picks it up automatically.
+inference path (``wallgen.loras``) picks it up automatically.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import dataset as ds
 
-log = logging.getLogger("fluxwall.train")
+log = logging.getLogger("wallgen.train")
 
 CONFIG_DIR = Path(__file__).resolve().parent / "configs"
 

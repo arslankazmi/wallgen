@@ -1,9 +1,9 @@
 [project]
-name = "flux-wallpaper"
+name = "wallgen"
 version = "0.1.0"
-description = "Self-hosted FLUX text-to-image pipeline for high-resolution desktop wallpapers (MPS + CUDA, GGUF-quantized, LoRA-ready)."
+description = "WallGen — hardware-aware self-hosted wallpaper generator (Z-Image-Turbo/FLUX/SD, MLX + Diffusers, quantized, LoRA-ready)."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Arslan Kazmi" }]
 dependencies = [
@@ -28,12 +28,14 @@ dependencies = [
 
 [project.optional-dependencies]
 ui = ["gradio>=4.44"]
-upscale = ["realesrgan-ncnn-py>=0.0.4"]
 lora = ["peft>=0.13"]
 train = ["peft>=0.13", "datasets>=3.0"]
+# Apple Silicon fast path. mflux is macOS-arm64 only (pulls mlx) — the marker
+# keeps the universal lock resolvable on Linux/Windows where it's unavailable.
+mlx = ["mflux>=0.14; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 
 [project.scripts]
-fluxwall = "fluxwall.cli:app"
+wallgen = "wallgen.cli:app"
 
 # --- torch flavor lives in conflicting dependency groups -----------------------
 # Default `uv sync` installs the lean CPU/MPS torch (the `cpu` group is a default
@@ -45,14 +47,20 @@ dev = ["pytest>=8", "pytest-mock>=3.14", "httpx>=0.27"]
 
 [tool.uv]
 default-groups = ["cpu", "dev"]
-conflicts = [[{ group = "cpu" }, { group = "cuda" }]]
+# cpu/cuda torch flavors are mutually exclusive; the mlx extra (macOS arm64) is
+# incompatible with the cuda group (Linux/Windows) — declare so uv forks them.
+conflicts = [
+    [{ group = "cpu" }, { group = "cuda" }],
+    [{ extra = "mlx" }, { group = "cuda" }],
+]
 
 [tool.uv.sources]
 torch = [
-    # On Linux the default PyPI wheel bundles the full CUDA stack (~GBs); pin the
-    # CPU index instead. macOS wheels are CPU/MPS only regardless of index.
-    { index = "pytorch-cpu", group = "cpu" },
-    { index = "pytorch-cu124", group = "cuda" },
+    # Linux/Windows: pin the CPU index so the multi-GB CUDA stack isn't pulled.
+    # macOS: use the default PyPI wheel (already CPU/MPS, and the only place with
+    # the newer torch that mflux needs) — so the cpu-index source skips Darwin.
+    { index = "pytorch-cpu", group = "cpu", marker = "sys_platform != 'darwin'" },
+    { index = "pytorch-cu124", group = "cuda", marker = "sys_platform != 'darwin'" },
 ]
 
 [[tool.uv.index]]
@@ -70,7 +78,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["fluxwall"]
+packages = ["wallgen"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

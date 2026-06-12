@@ -1,8 +1,8 @@
 from typer.testing import CliRunner
 
-from fluxwall import pipeline
-from fluxwall.cli import app
-from fluxwall.organize import GenerationRecord
+from wallgen import pipeline
+from wallgen.cli import app
+from wallgen.organize import GenerationRecord
 
 runner = CliRunner()
 
@@ -10,8 +10,9 @@ runner = CliRunner()
 def test_list_models_runs():
     result = runner.invoke(app, ["list-models"])
     assert result.exit_code == 0
-    assert "flux1-schnell" in result.output
+    assert "z-image-turbo" in result.output
     assert "flux2-klein-4b" in result.output
+    assert "sd-turbo" in result.output
 
 
 def test_loras_command_runs():
@@ -20,30 +21,29 @@ def test_loras_command_runs():
     assert "Configured stacks" in result.output
 
 
+def _record(prompt, seed, tmp_path):
+    return GenerationRecord(
+        prompt=prompt, model="z-image-turbo", backend="mlx", profile="dev", device="mps",
+        quant="4bit", steps=9, guidance=0.0, seed=seed, gen_size=(1024, 576),
+        target_size=(1920, 1080), stretched=True, image_path=str(tmp_path / "out.png"),
+    )
+
+
 def test_generate_invokes_pipeline(monkeypatch, tmp_path):
     captured = {}
 
-    def fake_generate(prompts, profile, resolution, lora_stack, extra, seed, do_upscale, config):
-        captured.update(
-            prompts=prompts, profile=profile, resolution=resolution,
-            lora_stack=lora_stack, extra=extra, seed=seed, do_upscale=do_upscale,
-        )
-        return [GenerationRecord(
-            prompt=prompts[0], model="m", profile="dev", device="cpu", dtype="float32",
-            quant="none", steps=4, guidance=0.0, seed=seed, gen_size=(1024, 576),
-            target_size=(1920, 1080), upscaled=not do_upscale is False,
-            image_path=str(tmp_path / "out.png"),
-        )]
+    def fake_generate(prompts, profile=None, lora_stack=None, extra_loras=None, seed=None, config=None):
+        captured.update(prompts=prompts, profile=profile, extra=extra_loras, seed=seed)
+        return [_record(prompts[0], seed, tmp_path)]
 
     monkeypatch.setattr(pipeline, "generate", fake_generate)
     result = runner.invoke(
         app,
-        ["generate", "a calm lake", "--profile", "dev", "--resolution", "hd",
-         "--seed", "7", "--lora", "org/x:0.6", "--no-upscale"],
+        ["generate", "a calm lake", "--profile", "dev", "--seed", "7", "--lora", "org/x:0.6"],
     )
     assert result.exit_code == 0, result.output
+    # Default lock mode is "off" -> prompt passes through unchanged.
     assert captured["prompts"] == ["a calm lake"]
     assert captured["profile"] == "dev"
     assert captured["seed"] == 7
-    assert captured["do_upscale"] is False
     assert captured["extra"][0].source == "org/x" and captured["extra"][0].scale == 0.6

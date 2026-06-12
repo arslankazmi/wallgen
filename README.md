@@ -1,102 +1,103 @@
-# Flux Wallpaper Generation Pipeline
+# WallGen — Multi-Model Wallpaper Generator
 
-A self-hosted text-to-image pipeline that wraps [HuggingFace Diffusers](https://github.com/huggingface/diffusers) around Black Forest Labs' **FLUX** models to generate high-resolution desktop wallpapers. It runs on Apple Silicon (MPS) and automatically uses CUDA when a GPU is present, picks a memory-appropriate quantization, supports third-party and custom LoRAs, and can drop a fresh wallpaper on your desktop every morning.
+A lean, self-hosted text-to-image pipeline for high-resolution desktop wallpapers. It picks the **most optimized model + backend for your hardware** automatically — MLX (`mflux`) on Apple Silicon, HuggingFace Diffusers + GGUF on CUDA/CPU — quantizes both the transformer *and* the text encoder for a small footprint, and generates with a wallpaper-aware prompt directive.
 
-> 📖 Live docs: https://arslankazmi.github.io/flux-wallpaper/
+> 📖 Live docs: https://arslankazmi.github.io/wallgen/
 
 ## What it does
 
-- **Two model tiers.** A fast **dev** tier (`FLUX.2-klein-4B`, Q4 GGUF) for quick iteration, and a quality **prod** tier (`FLUX.1-schnell`, GGUF) for the daily wallpaper — one Diffusers code path, swappable via config.
-- **Runs anywhere.** Auto-detects `cuda → mps → cpu`, picks `bfloat16`/`float32`, and auto-selects the GGUF quant (`Q8/Q6/Q5/Q4`) that fits your memory. CPU-offloads the heavy FLUX tiers on memory-limited machines.
-- **Wallpaper-shaped output.** Generates at a FLUX-native size, then upscales (Real-ESRGAN, Lanczos fallback) to 1080p / 1440p / 4K. Each image gets a JSON sidecar recording the prompt, seed, and settings.
-- **LoRA-ready.** Stack third-party or local LoRAs at inference, or train your own (delegates to the finetune workflow).
-- **Daily scheduler.** A launchd/cron job generates one wallpaper per day in off-hours and (optionally) sets it as your desktop.
-- **Private by default.** All external telemetry (Gradio, HuggingFace) is disabled; the UI binds to localhost. Nothing leaves your machine.
+- **Best model per host, automatically.** A priority registry + memory probe pick the best model that fits: `z-image-turbo` (default) → `FLUX.2-klein-4B` → `sd-turbo` (floor). VRAM and system RAM are considered separately on CUDA.
+- **Optimal backend per OS.** Apple Silicon runs MLX (`mflux`) for zero-copy unified-memory speed; CUDA/CPU run Diffusers with GGUF quantization and the right dtype (bf16 on Ampere+, fp16 on Turing, fp32 on CPU) and offload tier.
+- **Tiny footprint.** Transformer *and* text encoder are quantized — e.g. z-image-turbo 4-bit on Apple Silicon is a **~6GB** download and runs under 8GB.
+- **Lean output.** No upscaler: generate at the model's native size (≤1080p) and **stretch-resize** to your screen. The prompt directive tells the model the image will be stretched, so it composes accordingly.
+- **Deployable prompt control.** A configurable wallpaper directive plus a prompt **lock** (`off`/`template`/`locked`) — the daily scheduler runs locked so it can't be hijacked.
+- **LoRA-ready.** Stack third-party/local LoRAs at inference (both backends); train your own via the finetune workflow.
+- **Private by default.** Gradio + HuggingFace telemetry disabled; UI binds to localhost.
 
-## Architecture
+## Hardware matrix (auto-selected)
 
-```mermaid
-flowchart TD
-    CLI["CLI / Gradio UI / Scheduler"] --> CFG["config.yaml<br/>profiles · models · resolutions · lora stacks"]
-    CFG --> DEV["device.py<br/>cuda&gt;mps&gt;cpu · dtype · quant auto-select"]
-    DEV --> LOAD["models.py<br/>unified loader (FLUX.2 / FLUX.1 GGUF / SDXL)"]
-    LOAD -->|FLUX.2 unsupported| FB["fallback: SDXL-Lightning"]
-    LOAD --> LORA["loras.py<br/>stack + scale (no-fuse on quantized)"]
-    LORA --> GEN["pipeline.py<br/>generate @ native res"]
-    GEN --> UP["upscale.py<br/>Real-ESRGAN → target res"]
-    UP --> ORG["organize.py<br/>output/&lt;date&gt;/slug.png + .json"]
-    ORG --> WALL["🖼️ wallpaper"]
-    TRAIN["train/ → ak:ml-finetune"] -.->|.safetensors| LORA
-```
+| Host | Backend | Model | dtype | quant | placement |
+|------|---------|-------|-------|-------|-----------|
+| Apple Silicon (M-series), 16GB | MLX | z-image-turbo 4-bit | — | 4-bit | resident |
+| RTX 3060 Ti 8GB / 32GB RAM | Diffusers CUDA | z-image-turbo | bf16 | Q4/Q5 | model-offload |
+| GTX 1660 Ti 6GB / 16GB RAM | Diffusers CUDA | FLUX.2-klein-4B | fp16 | Q4 | model/seq offload |
+| i3, no GPU, 8GB | Diffusers CPU | FLUX.2-klein-4B | fp32 | Q3/Q4 | sequential (slow) |
+| i3, no GPU, 4GB (floor) | Diffusers CPU | sd-turbo | fp32 | — | sequential |
 
-## Model tiers
+## Models
 
-| Tier | Model | Quant | Speed (M4 MPS) | Use |
-|------|-------|-------|----------------|-----|
-| dev  | `FLUX.2-klein-4B` | Q4 GGUF | ~30–60 s/img | fast iteration |
-| prod | `FLUX.1-schnell`  | auto GGUF | ~2–4 min/img | daily scheduler |
-| fallback | `SDXL-Turbo` | — | ~5–15 s/img | when FLUX.2 unavailable / low memory |
+| Model | Maker / license | Why |
+|-------|-----------------|-----|
+| **z-image-turbo** (default) | Tongyi-MAI · Apache-2.0 | Best quality-per-byte; beats FLUX.1-schnell, rivals FLUX.2-dev; 9 steps |
+| **FLUX.2-klein-4B** | Black Forest Labs | FLUX flagship; 4 steps; smaller VRAM need |
+| **sd-turbo** | Stability AI | Tiny floor for 4GB / no-GPU hosts |
 
-FLUX schnell/klein are guidance-distilled → `guidance_scale=0`, 4 steps.
+All are guidance-distilled (`guidance_scale=0`).
 
 ## Quick start
 
 ```bash
-# Install (lean by default: CPU/MPS torch only — no CUDA stack)
-uv sync --extra ui --extra upscale --extra lora      # Mac / dev
-# uv sync --extra upscale                             # Linux CPU server (daily job)
-# uv sync --no-group cpu --group cuda --extra upscale # NVIDIA GPU host
+# Apple Silicon (MLX fast path)
+uv sync --extra mlx --extra ui --extra lora
 
-# Generate one wallpaper
-uv run python -m fluxwall generate "a serene misty mountain at dawn, ultrawide" -r hd
+# NVIDIA GPU (Windows/Linux)
+uv sync --no-group cpu --group cuda --extra ui
 
-# Batch from a prompt file
-uv run python -m fluxwall batch prompts/wallpapers.txt -r qhd
+# No GPU (Windows/Linux) — lean CPU torch
+uv sync
 
-# Interactive web UI (localhost, no telemetry)
-uv run python -m fluxwall ui
+# Generate (model + backend auto-selected; output stretched to config target)
+uv run python -m wallgen generate "a serene misty mountain at dawn, ultrawide"
 
-# Inspect config
-uv run python -m fluxwall list-models
-uv run python -m fluxwall loras
+# Batch, UI, config inspection
+uv run python -m wallgen batch prompts/wallpapers.txt
+uv run python -m wallgen ui            # localhost Gradio, no telemetry
+uv run python -m wallgen list-models
 ```
+
+## Output sizing
+
+Configured in `config.yaml`:
+
+```yaml
+output:
+  gen_size: [1024, 576]      # model-native generation (<=1080p)
+  target_size: [1920, 1080]  # final wallpaper; image is stretched to this
+  stretch: true
+```
+
+Generation and target share an aspect ratio by default, so the stretch is a clean scale.
+
+## Prompt control (for the deployed pipeline)
+
+```yaml
+prompt:
+  wallpaper_directive: "high-quality desktop wallpaper, full-bleed ... the image will be stretched to fill the screen ..."
+  lock:
+    mode: off        # off (raw) | template (subject + directive) | locked (only approved prompts)
+    locked_prompts: prompts/wallpapers.txt
+```
+
+The **daily scheduler** always runs locked: it rotates through `prompts/wallpapers.txt`, composes the directive, generates at the prod profile, and sets your desktop. Install via `wallgen/scheduler/com.arslankazmi.wallgen.daily.plist` (macOS launchd) or `wallgen.cron` (Linux).
 
 ## LoRAs
 
 ```bash
-# Use a named stack from config.yaml, or ad-hoc adapters:
-uv run python -m fluxwall generate "cyberpunk city" --loras cinematic
-uv run python -m fluxwall generate "cyberpunk city" --lora some-org/neon-flux:0.8 --lora loras/mine.safetensors:0.6
+uv run python -m wallgen generate "neon city" --lora some-org/style:0.8 --lora loras/mine.safetensors:0.6
 ```
 
-Drop local `.safetensors` into `loras/`. Because LoRA fusing is unreliable on GGUF-quantized weights, requesting any LoRA automatically loads an unquantized base.
-
-### Train your own
-
-```bash
-# Curate a captioned-image dataset (image.png + image.txt, or metadata.jsonl), then:
-uv run python -m fluxwall train --dataset path/to/dataset --config flux_lora_default
-```
-
-Training is handed off to the FLUX LoRA finetune workflow (SimpleTuner/kohya); the resulting `.safetensors` lands in `loras/` for immediate use.
-
-## Daily wallpaper (off-hours)
-
-The `daily` command rotates through `prompts/wallpapers.txt` (one per day), generates at the prod tier, and sets your desktop.
-
-- **macOS:** edit paths in `fluxwall/scheduler/com.arslankazmi.fluxwall.daily.plist`, copy to `~/Library/LaunchAgents/`, then `launchctl load …`.
-- **Linux:** add the line from `fluxwall/scheduler/flux-wallpaper.cron` to your crontab.
+Drop local `.safetensors` into `loras/`. Requesting a LoRA on the Diffusers path loads an unquantized base (fusing is unreliable on quantized weights). Train your own: `uv run python -m wallgen train --dataset <dir>`.
 
 ## Dependency footprint
 
-torch is split into conflicting `cpu` / `cuda` dependency-groups so the multi-GB CUDA stack is **never** installed unless you ask for it (`--group cuda`). Heavy features (`ui`, `upscale`, `lora`, `train`) are opt-in extras, keeping Docker/inference images small.
+torch lives in conflicting `cpu`/`cuda` dependency-groups so the multi-GB CUDA stack is never installed unless requested. Heavy features (`ui`, `lora`, `train`, `mlx`) are opt-in extras. No upscaler dependency.
 
 ## Development
 
 ```bash
-uv run pytest          # logic tests (model loads are mocked — no GPU needed)
+uv run pytest        # pure logic + placement/selection tests; no GPU needed
 ```
 
 ## License & credits
 
-Apache-2.0. Built on [Diffusers](https://github.com/huggingface/diffusers), Black Forest Labs [FLUX](https://huggingface.co/black-forest-labs), [city96](https://huggingface.co/city96) & [unsloth](https://huggingface.co/unsloth) GGUF quantizations, and [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN). See [ASSET_CREDITS.md](ASSET_CREDITS.md).
+Apache-2.0. Built on [Diffusers](https://github.com/huggingface/diffusers), [mflux](https://github.com/filipstrand/mflux), Tongyi-MAI [Z-Image](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo), Black Forest Labs [FLUX](https://huggingface.co/black-forest-labs), Stability AI, and GGUF quants by [unsloth](https://huggingface.co/unsloth)/[city96](https://huggingface.co/city96). See [ASSET_CREDITS.md](ASSET_CREDITS.md).

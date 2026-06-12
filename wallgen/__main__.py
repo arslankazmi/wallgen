@@ -1,4 +1,4 @@
-"""Enable ``python -m fluxwall`` -> the Typer CLI."""
+"""Enable ``python -m wallgen`` -> the Typer CLI."""
 
 from .cli import app
 

@@ -1,15 +1,13 @@
 import datetime as dt
 import json
 
-from fluxwall import organize
+from wallgen import organize
 
 
 def test_output_subdir_by_date(tmp_path):
     day = dt.date(2026, 6, 12)
-    sub = organize.output_subdir(tmp_path, "date", day)
-    assert sub == tmp_path / "2026-06-12"
-    flat = organize.output_subdir(tmp_path, "flat")
-    assert flat == tmp_path
+    assert organize.output_subdir(tmp_path, "date", day) == tmp_path / "2026-06-12"
+    assert organize.output_subdir(tmp_path, "flat") == tmp_path
 
 
 def test_target_paths_are_unique(tmp_path):
@@ -24,18 +22,18 @@ def test_target_paths_are_unique(tmp_path):
 
 def test_write_sidecar_roundtrip(tmp_path):
     rec = organize.GenerationRecord(
-        prompt="a prompt",
-        model="flux1-schnell",
-        profile="prod",
+        prompt="a prompt, wallpaper directive",
+        model="z-image-turbo",
+        backend="mlx",
+        profile="dev",
         device="mps",
-        dtype="bfloat16",
-        quant="Q5_K_M",
-        steps=4,
+        quant="4bit",
+        steps=9,
         guidance=0.0,
         seed=42,
         gen_size=(1024, 576),
         target_size=(1920, 1080),
-        upscaled=True,
+        stretched=True,
         loras=[{"source": "org/x", "scale": 0.8}],
         created_at=organize.now_iso(),
         image_path="out.png",
@@ -43,7 +41,8 @@ def test_write_sidecar_roundtrip(tmp_path):
     side = tmp_path / "rec.json"
     organize.write_sidecar(side, rec)
     data = json.loads(side.read_text())
-    assert data["prompt"] == "a prompt"
-    assert data["quant"] == "Q5_K_M"
-    assert data["loras"][0]["scale"] == 0.8
+    assert data["backend"] == "mlx"
+    assert data["model"] == "z-image-turbo"
+    assert data["stretched"] is True
     assert data["target_size"] == [1920, 1080]
+    assert data["loras"][0]["scale"] == 0.8

@@ -19,19 +19,19 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
-COPY fluxwall ./fluxwall
+COPY wallgen ./wallgen
 COPY config.yaml ./
 COPY prompts ./prompts
 
-# Resolve from the lockfile; only the requested torch group + upscale extra.
+# Resolve from the lockfile; only the requested torch group (lean inference image).
 RUN if [ "$TORCH_GROUP" = "cuda" ]; then \
-        uv sync --frozen --no-group cpu --group cuda --extra upscale --no-dev ; \
+        uv sync --frozen --no-group cpu --group cuda --no-dev ; \
     else \
-        uv sync --frozen --extra upscale --no-dev ; \
+        uv sync --frozen --no-dev ; \
     fi
 
 # Persist model downloads across runs by mounting a volume at /models.
 VOLUME ["/models", "/app/output"]
 
-ENTRYPOINT ["uv", "run", "python", "-m", "fluxwall"]
+ENTRYPOINT ["uv", "run", "python", "-m", "wallgen"]
 CMD ["daily"]

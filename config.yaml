@@ -1,65 +1,68 @@
-# flux-wallpaper configuration.
-# Two tiers: a fast `dev` model for iteration, a higher-quality `prod` model for
-# the daily off-hours wallpaper. Both run through one Diffusers code path with
-# device + quant auto-detection.
+# wallgen configuration.
+# Models are auto-selected per host (best that fits) and run via the optimal
+# backend (MLX/mflux on Apple Silicon, diffusers+GGUF on CUDA/CPU).
 
 default_profile: dev
-
 profiles:
-  dev: { model: flux2-klein-4b, quant: auto, steps: 4, guidance: 0.0 }
-  prod: { model: flux1-schnell, quant: auto, steps: 4, guidance: 0.0 }
+  dev: { model: auto }        # auto = pick the best-fitting model for this host
+  prod: { model: auto }
 
-# `min_memory_gb` drives memory-aware model selection: if the host has less RAM
-# than the requested model needs, the pipeline auto-picks the heaviest FLUX model
-# that fits (a 16 GB Mac asking for prod/schnell falls back to klein, not OOM).
+# Priority-ordered registry. `min_memory_gb` = total footprint (binds MPS/CPU +
+# CUDA RAM staging); `min_vram_gb` = on-device transformer (binds CUDA VRAM,
+# encoder offloads to RAM). Each model lists per-backend sources.
 models:
-  # Dev tier: genuinely small (4B) FLUX.2, fast iteration on Apple Silicon.
-  flux2-klein-4b:
+  z-image-turbo:                       # default: best quality-per-byte, Apache-2.0
+    kind: zimage
+    priority: 30
+    min_memory_gb: 10
+    min_vram_gb: 7
+    default_steps: 9
+    default_guidance: 0.0
+    mlx: { repo: filipstrand/Z-Image-Turbo-mflux-4bit, base_model: z-image-turbo, quant: 4 }
+    diffusers: { base: Tongyi-MAI/Z-Image-Turbo, gguf: unsloth/Z-Image-Turbo-GGUF, text_encoder_gguf: unsloth/Qwen3-4B-GGUF }
+    fallback: flux2-klein-4b
+  flux2-klein-4b:                      # FLUX flagship + mid fallback
     kind: flux2
-    base: black-forest-labs/FLUX.2-klein-4B
-    gguf: unsloth/FLUX.2-klein-4B-GGUF
-    fallback: sdxl-lightning        # used only if installed diffusers lacks FLUX.2
-    min_memory_gb: 12               # 4B GGUF + offloaded encoder fits a 16 GB Mac
-  # Prod tier: FLUX.1-schnell, GGUF transformer + GGUF T5 encoder.
-  flux1-schnell:
-    kind: flux
-    base: black-forest-labs/FLUX.1-schnell
-    gguf: city96/FLUX.1-schnell-gguf
-    t5_gguf: city96/t5-v1_1-xxl-encoder-gguf
-    min_memory_gb: 24               # 12B + T5-XXL; needs a roomier host
-  # Lightweight fallback (also a valid standalone fast model).
-  sdxl-lightning:
-    kind: sdxl
-    base: stabilityai/sdxl-turbo
+    priority: 20
     min_memory_gb: 8
+    min_vram_gb: 4
+    default_steps: 4
+    default_guidance: 0.0
+    mlx: { repo: Runpod/FLUX.2-klein-4B-mflux-4bit, base_model: flux2-klein-4b, quant: 4 }
+    diffusers: { base: black-forest-labs/FLUX.2-klein-4B, gguf: unsloth/FLUX.2-klein-4B-GGUF, text_encoder_gguf: unsloth/Qwen3-4B-GGUF }
+    fallback: sd-turbo
+  sd-turbo:                            # tiny floor for 4GB / no-GPU
+    kind: sdxl
+    priority: 10
+    min_memory_gb: 4
+    min_vram_gb: 4
+    default_steps: 2
+    default_guidance: 0.0
+    diffusers: { base: stabilityai/sd-turbo }
 
-# Generate at a FLUX-native size, then upscale to the wallpaper target.
-resolutions:
-  hd: { gen: [1024, 576], target: [1920, 1080] }
-  qhd: { gen: [1024, 576], target: [2560, 1440] }
-  uhd: { gen: [1024, 576], target: [3840, 2160] }
-  square: { gen: [1024, 1024], target: [2048, 2048] }
-
-generation:
-  upscale: true
-  upscaler: realesrgan
-  batch_size: 1
-  seed: null
-
+# Generate at a model-native size (<=1080p), then stretch-resize to the screen.
 output:
+  gen_size: [1024, 576]
+  target_size: [1920, 1080]
+  stretch: true
   dir: ./output
-  organize_by: date           # output/<YYYY-MM-DD>/<slug>.png + <slug>.json
+  organize_by: date
+
+# Prompt control for the deployable pipeline.
+prompt:
+  wallpaper_directive: "high-quality desktop wallpaper, full-bleed edge-to-edge composition for a {target_w}x{target_h} screen; the image will be stretched to fill the screen, so use balanced framing with no critical detail near the edges; no text, no watermark, no border"
+  lock:
+    mode: "off"             # off | template | locked (quote to avoid YAML bool coercion)
+    template: "{prompt}, {wallpaper_directive}"
+    locked_prompts: prompts/wallpapers.txt
 
 scheduler:
   profile: prod
-  resolution: uhd
-  theme_rotation: prompts/wallpapers.txt
   set_desktop: true
   loras: []
 
-# Named, reusable LoRA stacks. `source` is an HF repo id OR a local path
-# (e.g. loras/my_style.safetensors). Reference with `--loras <name>`.
+# Named, reusable LoRA stacks (source = HF repo id OR local loras/*.safetensors).
 loras:
   none: []
   # example_cinematic:
-  #   - { source: "some-org/cinematic-flux-lora", scale: 0.8 }
+  #   - { source: some-org/cinematic-lora, scale: 0.8 }
