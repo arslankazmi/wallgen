@@ -1,0 +1,76 @@
+[project]
+name = "flux-wallpaper"
+version = "0.1.0"
+description = "Self-hosted FLUX text-to-image pipeline for high-resolution desktop wallpapers (MPS + CUDA, GGUF-quantized, LoRA-ready)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Arslan Kazmi" }]
+dependencies = [
+    # NOTE: torch is intentionally NOT here — its flavor (CPU vs CUDA) is provided
+    # by the conflicting `cpu` / `cuda` dependency-groups below so the heavy CUDA
+    # stack is never installed unless explicitly requested. `cpu` is a default group.
+    "diffusers>=0.32",
+    "transformers>=4.46",
+    "accelerate>=1.0",
+    "safetensors>=0.4",
+    "gguf>=0.10",
+    "sentencepiece>=0.2",
+    "protobuf>=4",
+    "pillow>=10",
+    "psutil>=5.9",
+    "pyyaml>=6",
+    "typer>=0.12",
+    "tqdm>=4.66",
+    "huggingface-hub>=0.26",
+    "hf-transfer>=0.1.9",
+]
+
+[project.optional-dependencies]
+ui = ["gradio>=4.44"]
+upscale = ["realesrgan-ncnn-py>=0.0.4"]
+lora = ["peft>=0.13"]
+train = ["peft>=0.13", "datasets>=3.0"]
+
+[project.scripts]
+fluxwall = "fluxwall.cli:app"
+
+# --- torch flavor lives in conflicting dependency groups -----------------------
+# Default `uv sync` installs the lean CPU/MPS torch (the `cpu` group is a default
+# group). CUDA is strictly opt-in: `uv sync --no-group cpu --group cuda`.
+[dependency-groups]
+cpu = ["torch>=2.4"]
+cuda = ["torch>=2.4"]
+dev = ["pytest>=8", "pytest-mock>=3.14", "httpx>=0.27"]
+
+[tool.uv]
+default-groups = ["cpu", "dev"]
+conflicts = [[{ group = "cpu" }, { group = "cuda" }]]
+
+[tool.uv.sources]
+torch = [
+    # On Linux the default PyPI wheel bundles the full CUDA stack (~GBs); pin the
+    # CPU index instead. macOS wheels are CPU/MPS only regardless of index.
+    { index = "pytorch-cpu", group = "cpu" },
+    { index = "pytorch-cu124", group = "cuda" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fluxwall"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

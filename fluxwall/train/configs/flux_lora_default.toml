@@ -1,0 +1,29 @@
+# Default FLUX LoRA training config template.
+# Consumed by the ak:ml-finetune workflow (SimpleTuner/kohya). Tune to your data.
+# Base should be an unquantized (bf16) FLUX checkpoint — LoRA trains on the
+# full-precision base, then the resulting .safetensors is applied at inference.
+
+[model]
+base = "black-forest-labs/FLUX.1-dev"   # or FLUX.2-klein-4B for the lighter base
+kind = "flux"
+
+[lora]
+rank = 16            # 8-32 typical; higher rank = more capacity + larger file
+alpha = 16
+dropout = 0.0
+
+[train]
+resolution = 1024
+batch_size = 1
+gradient_accumulation_steps = 4
+learning_rate = 1e-4
+lr_scheduler = "constant"
+warmup_steps = 100
+max_train_steps = 1500
+gradient_checkpointing = true
+mixed_precision = "bf16"
+seed = 0
+
+[output]
+dir = "loras"
+save_every = 250

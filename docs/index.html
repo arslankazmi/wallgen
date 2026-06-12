@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>flux-wallpaper — self-hosted FLUX wallpaper pipeline</title>
+  <meta name="description" content="Self-hosted FLUX text-to-image pipeline for high-res desktop wallpapers. Two-tier FLUX.2-klein / FLUX.1-schnell, GGUF quant auto-select, MPS+CUDA, LoRA, daily scheduler." />
+  <meta property="og:title" content="flux-wallpaper — self-hosted FLUX wallpaper pipeline" />
+  <meta property="og:description" content="FLUX.2-klein (dev) + FLUX.1-schnell (prod), GGUF quant auto-select by memory, MPS/CUDA auto, Real-ESRGAN upscaling, LoRA, daily off-hours scheduler." />
+  <meta property="og:url" content="https://arslankazmi.github.io/flux-wallpaper/" />
+  <!-- Shared design tokens from the ak-design catalog theme. -->
+  <link rel="stylesheet" href="https://arslankazmi.github.io/ak-design/dist/catalog.css?v=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Re-skin onto ak-design: map this page's Tailwind scales onto catalog tokens.
+    // Accent = violet (image generation), remapped to the shared catalog accent.
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: {
+        fontFamily: { sans: ['Inter','system-ui','sans-serif'] },
+        colors: {
+          violet:  { 300:'var(--accent-2)', 400:'var(--accent-2)', 500:'var(--accent)', 600:'var(--accent)' },
+          fuchsia: { 400:'var(--accent-2)', 500:'var(--accent)', 800:'var(--border-strong)' },
+          gray: {
+            200:'var(--text)', 300:'var(--text)', 400:'var(--text-dim)', 500:'var(--text-faint)',
+            700:'var(--border-strong)', 800:'var(--border)', 900:'var(--bg-2)', 950:'var(--bg)',
+          },
+        }
+      } }
+    }
+  </script>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: { primaryColor:'#7c3aed', lineColor:'#a855f7', fontFamily:'Inter' } });
+  </script>
+  <style>
+    :root { --accent:#a855f7; --accent-2:#7c3aed; }
+    body { font-family:'Inter',system-ui,sans-serif; }
+    h1,h2,h3,h4 { font-family:'Sora',system-ui,sans-serif; }
+    pre.trace { white-space:pre; overflow-x:auto; }
+    .card { background:var(--bg-2); border:1px solid var(--border); border-radius:12px; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-300">
+  <main class="max-w-5xl mx-auto px-6 py-12">
+
+    <!-- Hero -->
+    <header class="mb-12">
+      <a href="https://arslankazmi.github.io/portfolio/" class="text-sm text-gray-400 hover:text-violet-400">↩ Catalog</a>
+      <h1 class="text-4xl md:text-5xl font-bold text-gray-200 mt-4">🖼️ Flux Wallpaper Generation Pipeline</h1>
+      <p class="text-lg text-gray-400 mt-4 max-w-3xl">
+        A self-hosted text-to-image pipeline that wraps HuggingFace Diffusers around Black Forest Labs'
+        <strong class="text-violet-400">FLUX</strong> models to generate high-resolution desktop wallpapers —
+        running on Apple Silicon (MPS) and auto-upgrading to CUDA, with memory-aware GGUF quantization,
+        LoRA support, and a daily off-hours scheduler.
+      </p>
+      <div class="flex flex-wrap gap-2 mt-6 text-sm">
+        <span class="card px-3 py-1">FLUX.2-klein · FLUX.1-schnell</span>
+        <span class="card px-3 py-1">Diffusers + GGUF</span>
+        <span class="card px-3 py-1">MPS / CUDA / CPU auto</span>
+        <span class="card px-3 py-1">Real-ESRGAN upscale</span>
+        <span class="card px-3 py-1">LoRA-ready</span>
+        <span class="card px-3 py-1">No telemetry</span>
+      </div>
+      <div class="mt-6">
+        <a href="https://github.com/arslankazmi/flux-wallpaper" class="inline-block bg-violet-600 text-white px-5 py-2 rounded-lg font-medium hover:opacity-90">View on GitHub →</a>
+      </div>
+    </header>
+
+    <!-- What it does -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-gray-200 mb-5">What it does</h2>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Two model tiers</h3><p>Fast <strong>dev</strong> tier (FLUX.2-klein-4B, Q4 GGUF) for iteration; quality <strong>prod</strong> tier (FLUX.1-schnell) for the daily wallpaper — one Diffusers code path, swap via config.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Runs anywhere</h3><p>Auto-detects cuda → mps → cpu, picks bf16/fp32, and selects the GGUF quant (Q8/Q6/Q5/Q4) that fits your memory. CPU-offloads heavy tiers when RAM is tight.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">Wallpaper-shaped</h3><p>Generates at a FLUX-native size then upscales (Real-ESRGAN → Lanczos fallback) to 1080p / 1440p / 4K. Every image gets a reproducible JSON sidecar.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">LoRA + scheduler</h3><p>Stack third-party / local LoRAs or train your own. A launchd/cron job makes one wallpaper a day in off-hours and sets your desktop.</p></div>
+      </div>
+    </section>
+
+    <!-- Architecture -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-gray-200 mb-5">Architecture</h2>
+      <div class="card p-5">
+        <pre class="mermaid">
+flowchart TD
+    CLI["CLI / Gradio UI / Scheduler"] --> CFG["config.yaml"]
+    CFG --> DEV["device.py — cuda&gt;mps&gt;cpu, dtype, quant auto-select"]
+    DEV --> LOAD["models.py — unified loader"]
+    LOAD -->|FLUX.2 unsupported / low mem| FB["fallback: SDXL-Turbo"]
+    LOAD --> LORA["loras.py — stack + scale"]
+    LORA --> GEN["pipeline.py — generate @ native res"]
+    GEN --> UP["upscale.py — Real-ESRGAN → target"]
+    UP --> ORG["organize.py — output/date/slug.png + .json"]
+    ORG --> WALL["wallpaper"]
+    TRAIN["train/ → ak:ml-finetune"] -.->|.safetensors| LORA
+        </pre>
+      </div>
+    </section>
+
+    <!-- Dry run -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-gray-200 mb-5">A run, end to end</h2>
+      <div class="card p-5">
+        <pre class="trace text-sm text-gray-300">$ uv run python -m fluxwall generate "a serene misty mountain at dawn, ultrawide" -r hd
+
+Profile dev | model=flux2-klein-4b | device=mps dtype=bfloat16 quant=Q4_K_M mem=16.0GB | loras=0
+Using GGUF FLUX.2-klein-4B-Q4_K_M.gguf from unsloth/FLUX.2-klein-4B-GGUF
+Generating 'a serene misty mountain at dawn, ultrawide' @ 1024x576 (flux2-klein-4b)
+Real-ESRGAN 2x → 1920x1080
+Saved output/2026-06-12/a-serene-misty-mountain-at-dawn-ultrawide.png
+       + a-serene-misty-mountain-at-dawn-ultrawide.json   (prompt · seed · quant · loras)</pre>
+      </div>
+    </section>
+
+    <!-- Decisions -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-gray-200 mb-5">Design decisions</h2>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">GGUF, not FP8/NF4</h3><p>GGUF is the only quantization that runs on <em>both</em> MPS and CUDA. FP8 (torchao) and NF4 (bitsandbytes) are CUDA-only, so they're deliberately unused — one quant path everywhere.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">guidance_scale = 0</h3><p>FLUX schnell/klein are <em>guidance-distilled</em> — they generate in ~4 steps with no CFG. Non-zero guidance degrades them. The defaults reflect that.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">LoRA without fusing</h3><p>Fusing LoRA into GGUF-quantized weights is unreliable, so requesting any LoRA transparently loads an unquantized base and applies adapters via PEFT scaling.</p></div>
+        <div class="card p-5"><h3 class="text-violet-400 font-semibold mb-2">CPU torch by default</h3><p>torch lives in conflicting cpu/cuda dependency-groups — the multi-GB CUDA stack is never installed unless asked for, keeping Docker images small.</p></div>
+      </div>
+    </section>
+
+    <!-- Layout -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-gray-200 mb-5">Project layout</h2>
+      <div class="card p-5">
+        <pre class="trace text-sm text-gray-400">fluxwall/
+  device.py     cuda&gt;mps&gt;cpu · dtype · quant auto-select
+  models.py     unified loader (FLUX.2 / FLUX.1 GGUF / SDXL) + fallback
+  loras.py      LoRA stack resolution + scaling (GGUF-aware)
+  config.py     profiles · models · resolutions · lora stacks
+  prompts.py    prompt files + deterministic daily rotation
+  pipeline.py   generate → upscale → organise
+  organize.py   output/&lt;date&gt;/slug.png + JSON sidecar
+  upscale.py    Real-ESRGAN → Lanczos fallback
+  webui.py      Gradio UI (telemetry off, localhost)
+  cli.py        generate · batch · daily · loras · train · ui
+  scheduler/    daily_wallpaper.py + launchd/cron templates
+  train/        captioned-image dataset → ak:ml-finetune</pre>
+      </div>
+    </section>
+
+    <!-- Quickstart -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-gray-200 mb-5">Quickstart</h2>
+      <div class="card p-5">
+        <pre class="trace text-sm text-gray-300">uv sync --extra ui --extra upscale --extra lora     # Mac / dev (CPU/MPS torch)
+
+uv run python -m fluxwall generate "northern lights over a fjord" -r uhd
+uv run python -m fluxwall batch prompts/wallpapers.txt
+uv run python -m fluxwall ui                          # localhost Gradio UI
+uv run python -m fluxwall generate "neon city" --lora some-org/neon:0.8</pre>
+      </div>
+    </section>
+
+    <footer class="text-sm text-gray-500 border-t border-gray-800 pt-6 mt-12">
+      <p>Built on <a class="text-violet-400" href="https://github.com/huggingface/diffusers">Diffusers</a>,
+        Black Forest Labs <a class="text-violet-400" href="https://huggingface.co/black-forest-labs">FLUX</a>,
+        GGUF quants by <a class="text-violet-400" href="https://huggingface.co/city96">city96</a> &amp;
+        <a class="text-violet-400" href="https://huggingface.co/unsloth">unsloth</a>, and
+        <a class="text-violet-400" href="https://github.com/xinntao/Real-ESRGAN">Real-ESRGAN</a>.
+        Apache-2.0. · <a class="text-violet-400" href="https://arslankazmi.github.io/portfolio/">↩ Catalog</a></p>
+    </footer>
+  </main>
+</body>
+</html>

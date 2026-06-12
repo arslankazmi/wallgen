@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  macOS launchd template for the daily off-hours wallpaper job.
+  Install:
+    1. Edit WorkingDirectory + the uv path below to match your machine.
+    2. cp this file to ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.arslankazmi.fluxwall.daily.plist
+  Runs every day at 03:00. Logs to /tmp/fluxwall.daily.{out,err}.log
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.arslankazmi.fluxwall.daily</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/REPLACE_ME/flux-wallpaper</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/REPLACE_ME/.local/bin/uv</string>
+        <string>run</string>
+        <string>python</string>
+        <string>-m</string>
+        <string>fluxwall</string>
+        <string>daily</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/tmp/fluxwall.daily.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/fluxwall.daily.err.log</string>
+</dict>
+</plist>

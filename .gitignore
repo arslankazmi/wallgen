@@ -1,0 +1,29 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Generated wallpapers (output is reproducible from prompts + sidecars)
+output/
+
+# Model weights & LoRA drop-ins (never commit large binaries)
+loras/
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# HF / torch caches
+.cache/
+hf_cache/
+
+# OS noise
+.DS_Store

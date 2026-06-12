@@ -1,0 +1,65 @@
+# flux-wallpaper configuration.
+# Two tiers: a fast `dev` model for iteration, a higher-quality `prod` model for
+# the daily off-hours wallpaper. Both run through one Diffusers code path with
+# device + quant auto-detection.
+
+default_profile: dev
+
+profiles:
+  dev: { model: flux2-klein-4b, quant: auto, steps: 4, guidance: 0.0 }
+  prod: { model: flux1-schnell, quant: auto, steps: 4, guidance: 0.0 }
+
+# `min_memory_gb` drives memory-aware model selection: if the host has less RAM
+# than the requested model needs, the pipeline auto-picks the heaviest FLUX model
+# that fits (a 16 GB Mac asking for prod/schnell falls back to klein, not OOM).
+models:
+  # Dev tier: genuinely small (4B) FLUX.2, fast iteration on Apple Silicon.
+  flux2-klein-4b:
+    kind: flux2
+    base: black-forest-labs/FLUX.2-klein-4B
+    gguf: unsloth/FLUX.2-klein-4B-GGUF
+    fallback: sdxl-lightning        # used only if installed diffusers lacks FLUX.2
+    min_memory_gb: 12               # 4B GGUF + offloaded encoder fits a 16 GB Mac
+  # Prod tier: FLUX.1-schnell, GGUF transformer + GGUF T5 encoder.
+  flux1-schnell:
+    kind: flux
+    base: black-forest-labs/FLUX.1-schnell
+    gguf: city96/FLUX.1-schnell-gguf
+    t5_gguf: city96/t5-v1_1-xxl-encoder-gguf
+    min_memory_gb: 24               # 12B + T5-XXL; needs a roomier host
+  # Lightweight fallback (also a valid standalone fast model).
+  sdxl-lightning:
+    kind: sdxl
+    base: stabilityai/sdxl-turbo
+    min_memory_gb: 8
+
+# Generate at a FLUX-native size, then upscale to the wallpaper target.
+resolutions:
+  hd: { gen: [1024, 576], target: [1920, 1080] }
+  qhd: { gen: [1024, 576], target: [2560, 1440] }
+  uhd: { gen: [1024, 576], target: [3840, 2160] }
+  square: { gen: [1024, 1024], target: [2048, 2048] }
+
+generation:
+  upscale: true
+  upscaler: realesrgan
+  batch_size: 1
+  seed: null
+
+output:
+  dir: ./output
+  organize_by: date           # output/<YYYY-MM-DD>/<slug>.png + <slug>.json
+
+scheduler:
+  profile: prod
+  resolution: uhd
+  theme_rotation: prompts/wallpapers.txt
+  set_desktop: true
+  loras: []
+
+# Named, reusable LoRA stacks. `source` is an HF repo id OR a local path
+# (e.g. loras/my_style.safetensors). Reference with `--loras <name>`.
+loras:
+  none: []
+  # example_cinematic:
+  #   - { source: "some-org/cinematic-flux-lora", scale: 0.8 }

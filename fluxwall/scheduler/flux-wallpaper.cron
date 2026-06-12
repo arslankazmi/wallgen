@@ -1,0 +1,6 @@
+# Linux home-server cron template for the daily off-hours wallpaper job.
+# Install:  crontab -e   then paste a line below (edit the paths).
+# Generates one fresh wallpaper every day at 03:00.
+
+# m h  dom mon dow   command
+0 3 * * *  cd /home/REPLACE_ME/flux-wallpaper && /home/REPLACE_ME/.local/bin/uv run python -m fluxwall daily >> /tmp/fluxwall.daily.log 2>&1

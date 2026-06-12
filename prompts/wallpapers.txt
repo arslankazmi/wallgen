@@ -1,0 +1,13 @@
+# One wallpaper prompt per line. Blank lines and #comments are ignored.
+# The daily scheduler rotates through these deterministically (one per day).
+
+a serene misty mountain range at dawn, soft volumetric light, ultrawide, highly detailed
+a minimalist japanese zen garden in autumn, raked sand, maple leaves, calm, cinematic
+deep space nebula in teal and magenta, stars, vast, photoreal, high dynamic range
+a lone lighthouse on a rugged cliff at golden hour, crashing waves, dramatic sky
+abstract flowing liquid metal waves, iridescent, dark background, elegant, 8k
+a quiet snowy forest at blue hour, soft falling snow, moody, atmospheric
+tropical bioluminescent coastline at night, glowing water, palm silhouettes
+art deco city skyline at sunset, warm gradients, geometric, sophisticated
+rolling lavender fields under a dramatic cloudy sky, depth, painterly
+a futuristic desert canyon with monolithic structures, warm sandstone, cinematic
